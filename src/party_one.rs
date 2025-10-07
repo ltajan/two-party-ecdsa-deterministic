@@ -50,6 +50,10 @@ use std::any::{Any, TypeId};
 
 use crate::Error::{self, InvalidSig};
 
+use hmac::{Hmac, Mac};
+use sha2::{Digest, Sha256};
+use gmp::mpz::Mpz;
+
 #[typetag::serde]
 pub trait Value: Sync + Send + Any {
     fn as_any(&self) -> &dyn Any;
@@ -531,6 +535,114 @@ impl EphKeyGenFirstMsg {
     pub fn create() -> (EphKeyGenFirstMsg, EphEcKeyPair) {
         let base: GE = ECPoint::generator();
         let secret_share: FE = ECScalar::new_random();
+        let public_share = base * secret_share;
+        let h: GE = GE::base_point2();
+        let w = ECDDHWitness { x: secret_share };
+        let c = h * secret_share;
+        let delta = ECDDHStatement {
+            g1: base,
+            h1: public_share,
+            g2: h,
+            h2: c,
+        };
+        let d_log_proof = ECDDHProof::prove(&w, &delta);
+        let ec_key_pair = EphEcKeyPair {
+            public_share,
+            secret_share,
+        };
+        (
+            EphKeyGenFirstMsg {
+                d_log_proof,
+                public_share,
+                c,
+            },
+            ec_key_pair,
+        )
+    }
+    pub fn create_deterministic(message: &BigInt, private_share: &EcKeyPair) -> (EphKeyGenFirstMsg, EphEcKeyPair) {
+        let base: GE = ECPoint::generator();
+
+        // step a.
+        let msg_bytes: Vec<u8> = message.into();
+        let mut hasher = Sha256::new();
+        hasher.update(msg_bytes);
+        let msg_hashed = hasher.finalize();
+        let mut msg_hashed_final = [0u8; 32];
+        msg_hashed_final.copy_from_slice(&msg_hashed);
+
+        let qlen = FE::q().bit_length();
+        let hlen = msg_hashed.len()*8; //256 for SHA256
+        let rlen = ((qlen + 7) / 8) as usize;
+
+        // step b.
+        let mut v = vec![0x01u8; hlen / 8];
+
+        // step c.
+        let mut k = vec![0x00u8; hlen / 8];
+
+        // step d.
+        let mut vec_k: &[u8] = &k;
+        let mut k_mpz: Mpz = Mpz::from(vec_k);
+
+        let mut share_scalar = private_share.secret_share.clone();
+        let mut share_scalar_bytes = share_scalar.get_element().clone();
+        let share_bytes: &[u8] = &share_scalar_bytes.serialize_secret();
+        let mut share_mpz = Mpz::from(share_bytes);
+        
+        let mut hmac = Hmac::<Sha256>::new_from_slice(&k).unwrap();
+        hmac.update(&v);
+        hmac.update(&[0x00]);
+        hmac.update(&share_bytes);
+        hmac.update(&msg_hashed_final);
+        k = hmac.finalize().into_bytes().to_vec();
+
+        // step e.
+        let mut hmac = Hmac::<Sha256>::new_from_slice(&k).unwrap();
+        hmac.update(&v);
+        v = hmac.finalize().into_bytes().to_vec();
+
+        // step f.
+        let mut hmac = Hmac::<Sha256>::new_from_slice(&k).unwrap();
+        hmac.update(&v);
+        hmac.update(&[0x01]);
+        hmac.update(&share_bytes);
+        hmac.update(&msg_hashed_final);
+        k = hmac.finalize().into_bytes().to_vec();
+
+        // step g.
+        let mut hmac = Hmac::<Sha256>::new_from_slice(&k).unwrap();
+        hmac.update(&v);
+        v = hmac.finalize().into_bytes().to_vec();
+
+        // step h.
+        let mut k_candidate: BigInt;
+        loop {
+            let mut t: Vec<u8> = Vec::new();
+            let test = t.len();
+            while t.len()*8 < qlen {
+                let mut hmac = Hmac::<Sha256>::new_from_slice(&k).unwrap();
+                hmac.update(&v);
+                v = hmac.finalize().into_bytes().to_vec();
+                t.extend(&v);
+            }
+            k_candidate = BigInt::from(&t[..rlen]);
+            // let mut k_candidate = BigUint::from_bytes_be(&t[..rolen]);
+            let order = FE::q()-BigInt::one();
+            if !k_candidate.is_zero() && &k_candidate < &order {
+                break;
+            }
+            let mut hmac = Hmac::<Sha256>::new_from_slice(&k).unwrap();
+            hmac.update(&v);
+            hmac.update(&[0x00]);
+            k = hmac.finalize().into_bytes().to_vec();
+
+            let mut hmac = Hmac::<Sha256>::new_from_slice(&k).unwrap();
+            hmac.update(&v);
+            v = hmac.finalize().into_bytes().to_vec();
+        }
+        
+        let secret_share: FE = ECScalar::from(&k_candidate);
+        
         let public_share = base * secret_share;
         let h: GE = GE::base_point2();
         let w = ECDDHWitness { x: secret_share };
