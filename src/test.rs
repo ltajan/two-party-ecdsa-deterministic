@@ -192,4 +192,206 @@ mod tests {
             party_one::compute_pubkey(&party1_private, &party_two_private_share_gen.public_share);
         party_one::verify(&signature, &pubkey, &message).expect("Invalid signature")
     }
+
+    #[test]
+    fn test_two_party_sign_deterministic_same() {
+        // assume party1 and party2 engaged with KeyGen in the past resulting in
+        // party1 owning private share and paillier key-pair
+        // party2 owning private share and paillier encryption of party1 share
+        let (_party_one_private_share_gen, _comm_witness, ec_key_pair_party1) =
+            party_one::KeyGenFirstMsg::create_commitments();
+        let (party_two_private_share_gen, ec_key_pair_party2) = party_two::KeyGenFirstMsg::create();
+
+        let keypair =
+            party_one::PaillierKeyPair::generate_keypair_and_encrypted_share(&ec_key_pair_party1);
+
+        let message1 = BigInt::from(1234);
+        let message2 = BigInt::from(1234);
+
+        // creating the ephemeral private shares:
+        let (eph1_party_two_first_message, eph1_comm_witness, eph1_ec_key_pair_party2) =
+            party_two::EphKeyGenFirstMsg::create_commitments_deterministic(&message1, &ec_key_pair_party2);
+        
+        let (eph2_party_two_first_message, eph2_comm_witness, eph2_ec_key_pair_party2) =
+            party_two::EphKeyGenFirstMsg::create_commitments_deterministic(&message2, &ec_key_pair_party2);
+        
+        assert_eq!(eph1_comm_witness.c, eph2_comm_witness.c);
+        assert_eq!(eph1_comm_witness.public_share, eph2_comm_witness.public_share);
+        assert_eq!(eph1_ec_key_pair_party2.public_share, eph2_ec_key_pair_party2.public_share);
+
+        let (eph1_party_one_first_message, eph1_ec_key_pair_party1) =
+            party_one::EphKeyGenFirstMsg::create_deterministic(&message1, &ec_key_pair_party1);
+        let eph1_party_two_second_message = party_two::EphKeyGenSecondMsg::verify_and_decommit(
+            eph1_comm_witness,
+            &eph1_party_one_first_message,
+        )
+        .expect("party1 DLog proof failed");
+
+        let (eph2_party_one_first_message, eph2_ec_key_pair_party1) =
+            party_one::EphKeyGenFirstMsg::create_deterministic(&message2, &ec_key_pair_party1);
+        let eph2_party_two_second_message = party_two::EphKeyGenSecondMsg::verify_and_decommit(
+            eph2_comm_witness,
+            &eph2_party_one_first_message,
+        )
+        .expect("party1 DLog proof failed");
+
+        assert_eq!(eph1_party_one_first_message.c, eph2_party_one_first_message.c);
+        assert_eq!(eph1_party_one_first_message.public_share, eph2_party_one_first_message.public_share);
+        assert_eq!(eph1_ec_key_pair_party1.public_share, eph2_ec_key_pair_party1.public_share);
+
+        let _eph1_party_one_second_message =
+            party_one::EphKeyGenSecondMsg::verify_commitments_and_dlog_proof(
+                &eph1_party_two_first_message,
+                &eph1_party_two_second_message,
+            )
+            .expect("failed to verify commitments and DLog proof");
+
+        let _eph2_party_one_second_message =
+            party_one::EphKeyGenSecondMsg::verify_commitments_and_dlog_proof(
+                &eph2_party_two_first_message,
+                &eph2_party_two_second_message,
+            )
+            .expect("failed to verify commitments and DLog proof");
+
+
+        let party2_private = party_two::Party2Private::set_private_key(&ec_key_pair_party2);
+        let partial_sig1 = party_two::PartialSig::compute(
+            &keypair.ek,
+            &keypair.encrypted_share,
+            &party2_private,
+            &eph1_ec_key_pair_party2,
+            &eph1_party_one_first_message.public_share,
+            &message1,
+        );
+
+        let partial_sig2 = party_two::PartialSig::compute(
+            &keypair.ek,
+            &keypair.encrypted_share,
+            &party2_private,
+            &eph2_ec_key_pair_party2,
+            &eph2_party_one_first_message.public_share,
+            &message2,
+        );
+
+        let party1_private =
+            party_one::Party1Private::set_private_key(&ec_key_pair_party1, &keypair);
+
+        let signature1 = party_one::Signature::compute(
+            &party1_private,
+            &partial_sig1.c3,
+            &eph1_ec_key_pair_party1,
+            &eph1_party_two_second_message.comm_witness.public_share,
+        );
+
+        let signature2 = party_one::Signature::compute(
+            &party1_private,
+            &partial_sig2.c3,
+            &eph2_ec_key_pair_party1,
+            &eph2_party_two_second_message.comm_witness.public_share,
+        );
+
+        assert_eq!(signature1.r, signature2.r);
+        assert_eq!(signature1.s, signature2.s);
+    }
+
+#[test]
+    fn test_two_party_sign_deterministic_different() {
+        // assume party1 and party2 engaged with KeyGen in the past resulting in
+        // party1 owning private share and paillier key-pair
+        // party2 owning private share and paillier encryption of party1 share
+        let (_party_one_private_share_gen, _comm_witness, ec_key_pair_party1) =
+            party_one::KeyGenFirstMsg::create_commitments();
+        let (party_two_private_share_gen, ec_key_pair_party2) = party_two::KeyGenFirstMsg::create();
+
+        let keypair =
+            party_one::PaillierKeyPair::generate_keypair_and_encrypted_share(&ec_key_pair_party1);
+
+        let message1 = BigInt::from(1234);
+        let message2 = BigInt::from(1235);
+
+        // creating the ephemeral private shares:
+        let (eph1_party_two_first_message, eph1_comm_witness, eph1_ec_key_pair_party2) =
+            party_two::EphKeyGenFirstMsg::create_commitments_deterministic(&message1, &ec_key_pair_party2);
+        
+        let (eph2_party_two_first_message, eph2_comm_witness, eph2_ec_key_pair_party2) =
+            party_two::EphKeyGenFirstMsg::create_commitments_deterministic(&message2, &ec_key_pair_party2);
+        
+        assert_ne!(eph1_comm_witness.c, eph2_comm_witness.c);
+        assert_ne!(eph1_comm_witness.public_share, eph2_comm_witness.public_share);
+        assert_ne!(eph1_ec_key_pair_party2.public_share, eph2_ec_key_pair_party2.public_share);
+
+        let (eph1_party_one_first_message, eph1_ec_key_pair_party1) =
+            party_one::EphKeyGenFirstMsg::create_deterministic(&message1, &ec_key_pair_party1);
+        let eph1_party_two_second_message = party_two::EphKeyGenSecondMsg::verify_and_decommit(
+            eph1_comm_witness,
+            &eph1_party_one_first_message,
+        )
+        .expect("party1 DLog proof failed");
+
+        let (eph2_party_one_first_message, eph2_ec_key_pair_party1) =
+            party_one::EphKeyGenFirstMsg::create_deterministic(&message2, &ec_key_pair_party1);
+        let eph2_party_two_second_message = party_two::EphKeyGenSecondMsg::verify_and_decommit(
+            eph2_comm_witness,
+            &eph2_party_one_first_message,
+        )
+        .expect("party1 DLog proof failed");
+
+        assert_ne!(eph1_party_one_first_message.c, eph2_party_one_first_message.c);
+        assert_ne!(eph1_party_one_first_message.public_share, eph2_party_one_first_message.public_share);
+        assert_ne!(eph1_ec_key_pair_party1.public_share, eph2_ec_key_pair_party1.public_share);
+
+        let _eph1_party_one_second_message =
+            party_one::EphKeyGenSecondMsg::verify_commitments_and_dlog_proof(
+                &eph1_party_two_first_message,
+                &eph1_party_two_second_message,
+            )
+            .expect("failed to verify commitments and DLog proof");
+
+        let _eph2_party_one_second_message =
+            party_one::EphKeyGenSecondMsg::verify_commitments_and_dlog_proof(
+                &eph2_party_two_first_message,
+                &eph2_party_two_second_message,
+            )
+            .expect("failed to verify commitments and DLog proof");
+
+
+        let party2_private = party_two::Party2Private::set_private_key(&ec_key_pair_party2);
+        let partial_sig1 = party_two::PartialSig::compute(
+            &keypair.ek,
+            &keypair.encrypted_share,
+            &party2_private,
+            &eph1_ec_key_pair_party2,
+            &eph1_party_one_first_message.public_share,
+            &message1,
+        );
+
+        let partial_sig2 = party_two::PartialSig::compute(
+            &keypair.ek,
+            &keypair.encrypted_share,
+            &party2_private,
+            &eph2_ec_key_pair_party2,
+            &eph2_party_one_first_message.public_share,
+            &message2,
+        );
+
+        let party1_private =
+            party_one::Party1Private::set_private_key(&ec_key_pair_party1, &keypair);
+
+        let signature1 = party_one::Signature::compute(
+            &party1_private,
+            &partial_sig1.c3,
+            &eph1_ec_key_pair_party1,
+            &eph1_party_two_second_message.comm_witness.public_share,
+        );
+
+        let signature2 = party_one::Signature::compute(
+            &party1_private,
+            &partial_sig2.c3,
+            &eph2_ec_key_pair_party1,
+            &eph2_party_two_second_message.comm_witness.public_share,
+        );
+
+        assert_ne!(signature1.r, signature2.r);
+        assert_ne!(signature1.s, signature2.s);
+    }
 }
