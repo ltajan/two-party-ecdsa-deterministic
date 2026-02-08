@@ -48,14 +48,13 @@ use std::ops::Shl;
 use serde::{Serialize,Deserialize};
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
-use gmp::mpz::Mpz;
 
 //****************** Begin: Party Two structs ******************//
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EcKeyPair {
     pub public_share: GE,
-    secret_share: FE,
+    pub secret_share: FE,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -82,7 +81,7 @@ pub struct PartialSig {
 pub struct Party2Private {
     x2: FE,
 }
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for EphEcKeyPair2 {
     fn as_any(&self) -> &dyn Any {
         self
@@ -119,7 +118,7 @@ pub struct EphKeyGenFirstMsg {
     pub zk_pok_commitment: BigInt,
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for EphKeyGenFirstMsg {
     fn as_any(&self) -> &dyn Any {
         self
@@ -148,7 +147,7 @@ pub struct PDLFirstMessage {
 }
 
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for PDLFirstMessage {
     fn as_any(&self) -> &dyn Any {
         self
@@ -173,7 +172,7 @@ pub struct PDL2decommit {
 }
 
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for PDL2decommit {
     fn as_any(&self) -> &dyn Any {
         self
@@ -196,7 +195,7 @@ pub struct PDLSecondMessage {
 }
 
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for PDLSecondMessage {
     fn as_any(&self) -> &dyn Any {
         self
@@ -479,13 +478,9 @@ impl EphKeyGenFirstMsg {
         let mut k = vec![0x00u8; hlen / 8];
 
         // step d.
-        let mut vec_k: &[u8] = &k;
-        let mut k_mpz: Mpz = Mpz::from(vec_k);
-
         let mut share_scalar = private_share.secret_share.clone();
         let mut share_scalar_bytes = share_scalar.get_element().clone();
         let share_bytes: &[u8] = &share_scalar_bytes.serialize_secret();
-        let mut share_mpz = Mpz::from(share_bytes);
         
         let mut hmac = Hmac::<Sha256>::new_from_slice(&k).unwrap();
         hmac.update(&v);

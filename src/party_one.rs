@@ -52,9 +52,8 @@ use crate::Error::{self, InvalidSig};
 
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
-use gmp::mpz::Mpz;
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 pub trait Value: Sync + Send + Any {
     fn as_any(&self) -> &dyn Any;
     fn type_name(&self) -> &str;
@@ -70,7 +69,7 @@ pub struct v {
     pub value: String,
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for HDPos {
     fn as_any(&self) -> &dyn Any {
         self
@@ -81,7 +80,7 @@ impl Value for HDPos {
     }
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for KeyGenFirstMsg {
     fn as_any(&self) -> &dyn Any {
         self
@@ -92,7 +91,7 @@ impl Value for KeyGenFirstMsg {
     }
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for CommWitness {
     fn as_any(&self) -> &dyn Any {
         self
@@ -103,7 +102,7 @@ impl Value for CommWitness {
     }
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for EcKeyPair {
     fn as_any(&self) -> &dyn Any {
         self
@@ -114,7 +113,7 @@ impl Value for EcKeyPair {
     }
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for v {
     fn as_any(&self) -> &dyn Any {
         self
@@ -125,7 +124,7 @@ impl Value for v {
     }
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for PaillierKeyPair {
     fn as_any(&self) -> &dyn Any {
         self
@@ -136,7 +135,7 @@ impl Value for PaillierKeyPair {
     }
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for Party1Private {
     fn as_any(&self) -> &dyn Any {
         self
@@ -147,7 +146,7 @@ impl Value for Party1Private {
     }
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for PDLdecommit {
     fn as_any(&self) -> &dyn Any {
         self
@@ -158,7 +157,7 @@ impl Value for PDLdecommit {
     }
 }
 
-#[typetag::serde]
+#[cfg_attr(feature = "typetag-support", typetag::serde)]
 impl Value for EphEcKeyPair {
     fn as_any(&self) -> &dyn Any {
         self
@@ -228,7 +227,7 @@ impl Display for HDPos {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EcKeyPair {
     pub public_share: GE,
-    secret_share: FE,
+    pub secret_share: FE,
 }
 
 
@@ -581,13 +580,9 @@ impl EphKeyGenFirstMsg {
         let mut k = vec![0x00u8; hlen / 8];
 
         // step d.
-        let mut vec_k: &[u8] = &k;
-        let mut k_mpz: Mpz = Mpz::from(vec_k);
-
         let mut share_scalar = private_share.secret_share.clone();
         let mut share_scalar_bytes = share_scalar.get_element().clone();
         let share_bytes: &[u8] = &share_scalar_bytes.serialize_secret();
-        let mut share_mpz = Mpz::from(share_bytes);
         
         let mut hmac = Hmac::<Sha256>::new_from_slice(&k).unwrap();
         hmac.update(&v);
